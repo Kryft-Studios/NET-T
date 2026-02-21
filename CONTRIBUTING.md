@@ -11,7 +11,7 @@ Contributions are happily welcomed!
 - Clone your fork locally:
 
 ```bash
-git clone git@github.com:your-username/bt.git
+git clone git@github.com:Kryft-Studios/net-t.git
 ```
 
 - Create a new branch for your changes:
