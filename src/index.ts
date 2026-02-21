@@ -25,7 +25,8 @@ export default function bint() {
             return a;
         }
     }
-    const types = {
+
+    const types: any = {
         1: "u8",
         2: "u16",
         3: "u32",
@@ -37,15 +38,22 @@ export default function bint() {
         9: "f32",
         10: "f64",
         getType: {
-            number(num:(1|2|3|4|5|6|7|8|9|10)){
-            return types[num]
-        }
-        string
-    },
+            number(num: keyof typeof types): string {
+                return types[num];
+            },
 
-    }
+            string(str: string): number | undefined {
+                if (str === "getType") return undefined;
+                const entry = Object.entries(types).find(([_, v]) => v === str);
+                return entry ? Number(entry[0]) : undefined;
+            },
+        }
+    };
+
     let indexManager: any = []
     indexManager.prototype.getValue = function (index: number) {
+        let typeOfIt = types.getType.string(index)
+        if (!!typeOfIt) return
 
     }
     function returnVariable() { }
