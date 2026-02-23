@@ -6,6 +6,12 @@ type TypeName =
 interface BintInstance {
   (value: number): BintInstance
   readonly [index: number]: number | bigint
+  readonly length: number
+  at(index: number): number | bigint | undefined
+  values(): IterableIterator<number | bigint>
+  entries(): IterableIterator<[number, number | bigint]>
+  keys(): IterableIterator<number>
+  [Symbol.iterator](): IterableIterator<number | bigint>
   toBuffer(): ArrayBuffer
 }
 
@@ -92,6 +98,23 @@ const bint: BintFactory = (() => {
       return proxy
     }
 
+    function at(index: number): number | bigint | undefined {
+      const normalized = index < 0 ? values.length + index : index
+      return values[normalized]
+    }
+
+    function valuesIterator(): IterableIterator<number | bigint> {
+      return values.values()
+    }
+
+    function entriesIterator(): IterableIterator<[number, number | bigint]> {
+      return values.entries()
+    }
+
+    function keysIterator(): IterableIterator<number> {
+      return values.keys()
+    }
+
     function toBuffer(): ArrayBuffer {
       const buffer = new ArrayBuffer(totalSize)
       const view = new DataView(buffer)
@@ -131,6 +154,11 @@ const bint: BintFactory = (() => {
 
       get(target, prop) {
         if (prop === "toBuffer") return toBuffer
+        if (prop === "length") return values.length
+        if (prop === "at") return at
+        if (prop === "values" || prop === Symbol.iterator) return valuesIterator
+        if (prop === "entries") return entriesIterator
+        if (prop === "keys") return keysIterator
 
         if (typeof prop === "string" && isArrayIndexProp(prop)) {
           const index = Number(prop)
