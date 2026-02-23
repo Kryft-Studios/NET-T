@@ -20,53 +20,36 @@ const typeIds: Record<TypeName, number> = {
   f32: 9, f64: 10,
 }
 
-const idToType = Object.fromEntries(
-  Object.entries(typeIds).map(([k, v]) => [v, k])
-) as Record<number, TypeName>
+const idToType: Record<number, TypeName> = {
+  1: "u8", 2: "u16", 3: "u32", 4: "u64",
+  5: "i8", 6: "i16", 7: "i32", 8: "i64",
+  9: "f32", 10: "f64",
+}
 
-const caps = {
-  u8: { min: 0, max: 255 },
-  u16: { min: 0, max: 65535 },
-  u32: { min: 0, max: 4294967295 },
-  u64: { min: 0n, max: 18446744073709551615n },
-
-  i8: { min: -128, max: 127 },
-  i16: { min: -32768, max: 32767 },
-  i32: { min: -2147483648, max: 2147483647 },
-  i64: { min: -9223372036854775808n, max: 9223372036854775807n },
-
-  f32: { min: -3.4028234663852886e38, max: 3.4028234663852886e38 },
-  f64: { min: -Number.MAX_VALUE, max: Number.MAX_VALUE },
-} as const
+const F32_MAX = 3.4028234663852886e38
 
 function identifyBestType(num: number): TypeName {
-  const isInt = Number.isInteger(num)
-  const isNeg = num < 0
+  if (!Number.isFinite(num)) return "f64"
 
-  const order: TypeName[] = [
-    "u8","u16","u32","u64",
-    "i8","i16","i32","i64",
-    "f32","f64"
-  ]
-
-  for (const type of order) {
-    const cap = caps[type]
-
-    if (isNeg && type.startsWith("u")) continue
-    if (!isInt && !type.startsWith("f")) continue
-
-    if (type === "u64" || type === "i64") {
-      if (!isInt) continue
-      const big = BigInt(num)
-      if (big >= cap.min && big <= cap.max) return type
-      continue
+  if (!Number.isInteger(num)) {
+    if (num >= -F32_MAX && num <= F32_MAX && Math.fround(num) === num) {
+      return "f32"
     }
-
-    if (num >= (cap as any).min && num <= (cap as any).max) {
-      return type
-    }
+    return "f64"
   }
 
+  if (num >= 0) {
+    if (num <= 0xff) return "u8"
+    if (num <= 0xffff) return "u16"
+    if (num <= 0xffffffff) return "u32"
+    if (Number.isSafeInteger(num)) return "u64"
+    return "f64"
+  }
+
+  if (num >= -0x80) return "i8"
+  if (num >= -0x8000) return "i16"
+  if (num >= -0x80000000) return "i32"
+  if (Number.isSafeInteger(num)) return "i64"
   return "f64"
 }
 
@@ -86,64 +69,53 @@ function byteSize(type: TypeName): number {
 }
 
 const bint: BintFactory = (() => {
+  function isArrayIndexProp(prop: string): boolean {
+    if (prop === "") return false
+    const index = Number(prop)
+    return Number.isInteger(index) && index >= 0 && String(index) === prop
+  }
 
-  function create(): BintInstance {
-    const buckets: Record<TypeName, any[]> = {
-      u8: [], u16: [], u32: [], u64: [],
-      i8: [], i16: [], i32: [], i64: [],
-      f32: [], f64: [],
+  function createState() {
+    const types: TypeName[] = []
+    const values: Array<number | bigint> = []
+    let totalSize = 0
+
+    function push(type: TypeName, value: number | bigint): void {
+      types.push(type)
+      values.push(value)
+      totalSize += 1 + byteSize(type)
     }
-
-    const typeOrder: TypeName[] = []
-    const positions: number[] = []
 
     function add(num: number): BintInstance {
       const type = identifyBestType(num)
-      const pos = buckets[type].length
-
-      buckets[type].push(
-        type === "u64" || type === "i64"
-          ? BigInt(num)
-          : num
-      )
-
-      typeOrder.push(type)
-      positions.push(pos)
-
+      push(type, type === "u64" || type === "i64" ? BigInt(num) : num)
       return proxy
     }
 
     function toBuffer(): ArrayBuffer {
-      let total = 0
-
-      for (const type of typeOrder) {
-        total += 1
-        total += byteSize(type)
-      }
-
-      const buffer = new ArrayBuffer(total)
+      const buffer = new ArrayBuffer(totalSize)
       const view = new DataView(buffer)
 
       let offset = 0
 
-      for (let i = 0; i < typeOrder.length; i++) {
-        const type = typeOrder[i]
-        const value = buckets[type][positions[i]]
+      for (let i = 0; i < types.length; i++) {
+        const type = types[i]
+        const value = values[i]
 
         view.setUint8(offset, typeIds[type])
         offset += 1
 
         switch (type) {
-          case "u8": view.setUint8(offset, value); break
-          case "i8": view.setInt8(offset, value); break
-          case "u16": view.setUint16(offset, value, true); break
-          case "i16": view.setInt16(offset, value, true); break
-          case "u32": view.setUint32(offset, value, true); break
-          case "i32": view.setInt32(offset, value, true); break
-          case "f32": view.setFloat32(offset, value, true); break
-          case "u64": view.setBigUint64(offset, value, true); break
-          case "i64": view.setBigInt64(offset, value, true); break
-          case "f64": view.setFloat64(offset, value, true); break
+          case "u8": view.setUint8(offset, value as number); break
+          case "i8": view.setInt8(offset, value as number); break
+          case "u16": view.setUint16(offset, value as number, true); break
+          case "i16": view.setInt16(offset, value as number, true); break
+          case "u32": view.setUint32(offset, value as number, true); break
+          case "i32": view.setInt32(offset, value as number, true); break
+          case "f32": view.setFloat32(offset, value as number, true); break
+          case "u64": view.setBigUint64(offset, value as bigint, true); break
+          case "i64": view.setBigInt64(offset, value as bigint, true); break
+          case "f64": view.setFloat64(offset, value as number, true); break
         }
 
         offset += byteSize(type)
@@ -157,35 +129,40 @@ const bint: BintFactory = (() => {
         return add(args[0])
       },
 
-      get(_, prop) {
+      get(target, prop) {
         if (prop === "toBuffer") return toBuffer
 
-        if (typeof prop === "string" && !isNaN(Number(prop))) {
+        if (typeof prop === "string" && isArrayIndexProp(prop)) {
           const index = Number(prop)
-          const type = typeOrder[index]
-          return type
-            ? buckets[type][positions[index]]
-            : undefined
+          return values[index]
         }
 
-        return undefined
+        return Reflect.get(target, prop)
       }
     })
 
-    return proxy
+    return { proxy, push }
+  }
+
+  function create(): BintInstance {
+    return createState().proxy
   }
 
   create.fromBuffer = function(buffer: ArrayBuffer): BintInstance {
     const view = new DataView(buffer)
+    const state = createState()
     let offset = 0
-    const instance = create()
 
     while (offset < buffer.byteLength) {
       const typeId = view.getUint8(offset++)
       const type = idToType[typeId]
       if (!type) throw new Error("Invalid type id")
+      const size = byteSize(type)
+      if (offset + size > buffer.byteLength) {
+        throw new Error("Invalid buffer length")
+      }
 
-      let value: any
+      let value: number | bigint
 
       switch (type) {
         case "u8": value = view.getUint8(offset); break
@@ -200,11 +177,11 @@ const bint: BintFactory = (() => {
         case "f64": value = view.getFloat64(offset, true); break
       }
 
-      offset += byteSize(type)
-      instance(value)
+      offset += size
+      state.push(type, value)
     }
 
-    return instance
+    return state.proxy
   }
 
   return create
