@@ -80,6 +80,7 @@ function identifyBestType(num: number): TypeName {
   return "Float64";
 }
 function byteSize(type: TypeName): number {
+  if(type.endsWith("8"))return 1; // Uint8 does NOT meet the requirements for the following operations (Number("t8") will be NaN)
   // the length var
   let len = type.length;
   // the number at the end (for example in Uint32 its 32)
@@ -146,11 +147,15 @@ const bint: BintFactory = (() => {
 
         let vsset = (view as any)[`set${type}`]
         if (type.endsWith("8")) {
-          vsset(offset, value);
+          vsset.call(view, offset, value, true);;
         } else if (type.endsWith("64") && !type.startsWith("F")) {
-          vsset(offset, BigInt(value), true);
+          vsset.call(view, offset, value, true);;
         } else {
-          vsset(offset, Number(value), true);
+          //try {
+          vsset.call(view, offset, value, true);;
+          //} catch (e) {
+          //  console.log("⚠",value,type,"\n",e)
+          //}
         }
         offset += byteSize(type);
       }
